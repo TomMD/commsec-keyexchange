@@ -20,7 +20,7 @@ homepage:            https://github.com/TomMD/commsec-keyExchange
 extra-source-files:  Test/test.hs
 
 library
-  exposed-modules:     Network.CommSec.SSHKey
+  exposed-modules:     Network.CommSec.KeyExchange
   -- other-modules:       
   build-depends:       base <5,
                        network,
