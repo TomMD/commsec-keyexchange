@@ -1,4 +1,4 @@
-==CommSec Key Exchange==
+##CommSec Key Exchange
 CommSec key exchange builds on the [commsec](https://github.com/TomMD/commsec)
 package to provide a simple key agreement for secure communications.  To
 communicate, the users need to have preshared RSA public keys.
@@ -8,7 +8,7 @@ Short of parsing SSH keys, see below, you can use this package in combination wi
 on each system.  Exchange public keys out of band, and connect using the `accept` and
 `connect` primitives from `Network.CommSec.KeyExchange`.
 
-==Secure Communications using SSH Keys==
+##Secure Communications using SSH Keys
 Once a pull request is accepted, using crypto-pubkey-openssh should be the easiest
 method. From the shell, just generate RSA keys:
 
@@ -32,7 +32,7 @@ Now your programs will be able to read in these keys and perform key agreement:
         -- Step 3: Listen for and accept a connection (alternatively: connect to a listener).
         accept host port them priv
 
-==Note==
+##Note
 This key agreement protocol is based on the station to station protocol.  There
 is minimal testing and no peer review.  As with the commsec package, this is
 only intended to be 'morally correct' for purposes of prototyping (it should
