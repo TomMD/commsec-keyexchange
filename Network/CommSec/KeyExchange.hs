@@ -1,7 +1,29 @@
 {-# LANGUAGE RecordWildCards, BangPatterns #-}
+-- |This module provides an authenticated key exchange using the station to
+-- station protocol and RSA signatures for authentication.
+--
+-- For example, after presharing ssh keys generated using ssh-keygen:
+--
+-- @
+--  import Crypto.PubKey.OpenSsh
+--  import qualified Data.ByteString as B
+--  import Network.CommSec.KeyExchange
+--
+--  main = do
+--      -- Step 1: (not shown) get file paths, host, and port somehow.
+--      -- Step 2: Read in the keys
+--      OpenSshPrivateKeyRsa priv <- (either error id . (\x -> decodePrivate x)) `fmap` B.readFile myPrivateKeyFile
+--      OpenSshPublicKeyRsa them _ <- (either error id . decodePublic) `fmap` B.readFile theirPublicKeyFile
+--
+--      -- Step 3: Listen for and accept a connection (or connect to the listener)
+--      if listener
+--          then accept host port them priv
+--          else connect host port them priv
+-- @
 module Network.CommSec.KeyExchange
     ( connect
     , accept
+    , keyExchangeInit, keyExchangeResp
     , CS.send, CS.recv, CS.Connection, Net.HostName, Net.PortNumber
     ) where
 
@@ -33,7 +55,7 @@ import qualified Network.CommSec as CS
 import Network.CommSec hiding (accept, connect)
 import Network.CommSec.Package (InContext(..), OutContext(..))
 
--- RFC 5114 section 2.3
+-- |This prime is from RFC 5114 section 2.3
 thePrime :: Integer
 thePrime = 0x87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00DF8F1D61957D4FAF7DF4561B2AA3016C3D91134096FAA3BF4296D830E9A7C209E0C6497517ABD5A8A9D306BCF67ED91F9E6725B4758C022E0B1EF4275BF7B6C5BFC11D45F9088B941F54EB1E59BB8BC39A0BF12307F5C4FDB70C581B23F76B63ACAE1CAA6B7902D52526735488A0EF13C6D9A51BFA4AB3AD8347796524D8EF6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597
 
@@ -41,17 +63,20 @@ thePrime = 0x87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00
 theGenerator :: Integer
 theGenerator = 5
 
--- Sign exponents and atest to our ID:  Sign(q_y, Sha256(a | b | pk_x))
+-- |Sign exponents:  Sign(q_y, Sha256(a | b))
 signExps :: Integer -> Integer -> PrivateKey -> ByteString
 signExps a b k = L.toStrict . RSA.sign k $ encodeExps a b
 
--- Verify exponents and other party was signed as:  Sign(q_y, Sha256(a | b | pk_x))
+-- |Verify exponents and other party was signed as:  Sign(q_y, Sha256(a | b))
 verifyExps :: Integer -> Integer -> ByteString -> PublicKey -> Bool
 verifyExps a b sig k = RSA.verify k (encodeExps a b) (fromStrict sig)
 
+-- |Serialize exponents in an agreed upon format
 encodeExps :: Integer -> Integer -> L.ByteString
 encodeExps a b = fromStrict . runPut $ put a >> put b
 
+-- |Get the secret value @x@ and a publicly sharable value @theGenerator
+-- ^ x@
 getXaX :: IO (Integer, Integer)
 getXaX = do
     g <- newGenIO :: IO HmacDRBG
@@ -59,6 +84,11 @@ getXaX = do
         ax    = modexp theGenerator x thePrime
     return (x,ax)
 
+-- |@keyExchangeResp sock them me@
+--
+-- Act as the responder in an authenticated key exchange using the socket
+-- @sock@ as the communications channel, the public key @them@ to verify
+-- the end point and the private key @me@ to prove ourself.
 keyExchangeResp :: Net.Socket -> PublicKey -> PrivateKey -> IO (OutContext, InContext)
 keyExchangeResp sock publicThem privateMe = do
     (y,ay) <- getXaX
@@ -86,6 +116,11 @@ keyExchangeResp sock publicThem privateMe = do
            (error "RESP: Verification failed when exchanging key.  Man in the middle?")
     return (outCtx, inCtx)
 
+-- |@keyExchangeInit sock them me@
+--
+-- Act as the initiator in an authenticated key exchange using the socket
+-- @sock@ as the communications channel, the public key @them@ to verify
+-- the end point and the private key @me@ to prove ourself.
 keyExchangeInit :: Net.Socket -> PublicKey -> PrivateKey -> IO (OutContext, InContext)
 keyExchangeInit sock publicThem privateMe = do
     -- our secret big number, x, and a^x for exchange.
@@ -121,7 +156,7 @@ keyExchangeInit sock publicThem privateMe = do
 connect :: Net.HostName -> Net.PortNumber -> PublicKey -> PrivateKey -> IO Connection
 connect host port them us = do
     sockaddr <- resolve host port
-    socket <- Net.socket Net.AF_INET Net.Stream Net.defaultProtocol
+    socket   <- Net.socket Net.AF_INET Net.Stream Net.defaultProtocol
     Net.connect socket sockaddr
     Net.setSocketOption socket Net.NoDelay 1
     Net.setSocketOption socket Net.ReuseAddr 1
