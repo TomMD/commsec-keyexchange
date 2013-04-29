@@ -6,6 +6,7 @@ import Network.CommSec.KeyExchange
 import qualified Data.ByteString as B
 import Data.ByteString.Char8 ()
 import Crypto.PubKey.OpenSsh
+import Crypto.Types.PubKey.RSA
 import Control.Concurrent
 import System.FilePath
 
@@ -14,10 +15,10 @@ port :: PortNumber
 port = 1874
 host = "127.0.0.1"
 
-readSSHKeys :: FilePath -> IO (OpenSshPublicKey, OpenSshPrivateKey)
+readSSHKeys :: FilePath -> IO (PublicKey, PrivateKey)
 readSSHKeys fp = do
-    pub  <- (either error id . decodePublic) `fmap` B.readFile (fp <.> "pub")
-    priv <- (either error id . (\x -> decodePrivate x Nothing)) `fmap` B.readFile fp
+    OpenSshPublicKeyRsa pub _ <- (either error id . decodePublic) `fmap` B.readFile (fp <.> "pub")
+    OpenSshPrivateKeyRsa priv <- (either error id . (\x -> decodePrivate x Nothing)) `fmap` B.readFile fp
     return (pub,priv)
 
 main = do

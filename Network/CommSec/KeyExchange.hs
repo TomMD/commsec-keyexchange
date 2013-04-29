@@ -93,7 +93,7 @@ keyExchangeResp :: Net.Socket -> PublicKey -> PrivateKey -> IO (OutContext, InCo
 keyExchangeResp sock publicThem privateMe = do
     (y,ay) <- getXaX
     ax     <- (either error id . decode) `fmap` recvMsg sock
-    let axy = ax * ay `mod` thePrime
+    let axy = modexp ax y thePrime
         sharedSecret = encode . sha256 $ i2bs (2048 `div` 8) axy
         shared512    = expandSecret sharedSecret (16 + 16 + 4 + 4)
         -- Split the 512 bit secret into [ Key 1 (128b) | Key 2 (128b) | salt 1 (32b) | salt 2 (32 b) ]
@@ -131,7 +131,7 @@ keyExchangeInit sock publicThem privateMe = do
         decodePkg = runGet (do i <- get -- Integer
                                e <- get -- Encrypted signature
                                return (i,e))
-        axy = ax * ay `mod` thePrime :: Integer
+        axy = modexp ay x thePrime :: Integer
         sharedSecret = encode . sha256 $ i2bs (2048 `div` 8) axy
         shared512    = expandSecret sharedSecret 64
         -- Split the 512 bit secret into [ Key 1 (128b) | Key 2 (128b) | salt 1 (32b) | salt 2 (32 b) ]
