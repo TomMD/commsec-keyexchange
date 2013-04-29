@@ -19,18 +19,28 @@ Then exchange the public keys (`id_rsa.pub`).
 
 Now your programs will be able to read in these keys and perform key agreement:
 
+    {-# LANGUAGE OverloadedStrings #-}
     import Crypto.PubKey.OpenSsh
     import qualified Data.ByteString as B
+    import qualified Data.ByteString.Char8 as BC
     import Network.CommSec.KeyExchange
 
     main = do
         -- Step 1: (not shown) get file paths, host, and port somehow.
         -- Step 2: Read in the keys
-        OpenSshPrivateKeyRsa priv <- (either error id . (\x -> decodePrivate x Nothing)) `fmap` B.readFile myPrivateKeyFile
-        OpenSshPublicKeyRsa them _ <- (either error id . decodePublic) `fmap` B.readFile theirPublicKeyFile
+        OpenSshPrivateKeyRsa priv  <- (either error id . (\x -> decodePrivate x Nothing)) `fmap`
+                                      B.readFile myPrivateKeyFile
+        OpenSshPublicKeyRsa them _ <- (either error id . decodePublic) `fmap`
+                                      B.readFile theirPublicKeyFile
 
         -- Step 3: Listen for and accept a connection (alternatively: connect to a listener).
-        accept host port them priv
+        conn <- if listener
+                 then accept  host port them priv
+                 else connect host port them priv
+
+        -- Step 4: Communicate
+        send conn "hello!"
+        recv conn >>= BC.print
 
 ##Note
 This key agreement protocol is based on the station to station protocol.  There
