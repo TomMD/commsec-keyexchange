@@ -153,6 +153,8 @@ keyExchangeInit sock publicThem privateMe = do
     sendMsg sock enc
     return (outCtx, inCtx)
 
+-- |Connect to the specified host and port, establishing a secure,
+-- authenticated connection with a party holding the public key.
 connect :: Net.HostName -> Net.PortNumber -> PublicKey -> PrivateKey -> IO Connection
 connect host port them us = do
     sockaddr <- resolve host port
@@ -171,6 +173,9 @@ connect host port them us = do
                                     Net.addrFamily = Net.AF_INET, Net.addrSocketType = Net.Stream } ) (Just h) (Just (show port))
         return (maybe (error $ "Could not resolve host " ++ h) Net.addrAddress (listToMaybe ai))
 
+-- |Listen for and accept a connection on the host and port, establishing
+-- a secure, authenticated connection with a party holding the specified
+-- public key.
 accept :: Net.PortNumber -> PublicKey -> PrivateKey -> IO Connection
 accept port them us = do
     let sockaddr = Net.SockAddrInet port Net.iNADDR_ANY
