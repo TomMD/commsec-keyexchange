@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, BangPatterns #-}
+{-# LANGUAGE RecordWildCards, BangPatterns, OverloadedStrings #-}
 -- |This module provides an authenticated key exchange using the station to
 -- station protocol and RSA signatures for authentication.
 --
@@ -24,7 +24,8 @@ module Network.CommSec.KeyExchange
     ( connect
     , accept
     , keyExchangeInit, keyExchangeResp
-    , CS.send, CS.recv, CS.Connection, Net.HostName, Net.PortNumber
+    , CS.send, CS.recv, CS.Connection, CS.close
+    , Net.HostName, Net.PortNumber
     ) where
 
 import qualified Network.Socket as Net
@@ -84,15 +85,43 @@ getXaX = do
         ax    = modexp theGenerator x thePrime
     return (x,ax)
 
--- |@keyExchangeResp sock them me@
+buildSigMessage :: AESKey -> PrivateKey -> Integer -> Integer -> ByteString
+buildSigMessage aesKey privateMe ax ay =
+    let publicMe = encode . sha256 . encode . private_pub $ privateMe
+        mySig    = signExps ax ay privateMe
+        plaintext = B.append publicMe mySig
+    in fst .  ctr aesKey zeroIV $ plaintext
+
+parseSigMessage :: AESKey -> [PublicKey] -> ByteString -> Integer -> Integer -> Maybe PublicKey
+parseSigMessage aesKey thems enc ax ay =
+    let (pubHash, theirSig) = B.splitAt (256 `div` 8)
+                            . fst . unCtr aesKey zeroIV
+                            $ enc
+        pubHashes = map (\k -> (encode (sha256 $ encode k),k)) thems
+    in case lookup pubHash pubHashes of
+            Just publicThem ->
+                if (not $ verifyExps ax ay theirSig publicThem)
+                    then Nothing
+                    else Just publicThem
+            Nothing -> Nothing
+
+-- |@keyExchangeResp sock pubKeys me@
 --
 -- Act as the responder in an authenticated key exchange using the socket
--- @sock@ as the communications channel, the public key @them@ to verify
--- the end point and the private key @me@ to prove ourself.
-keyExchangeResp :: Net.Socket -> PublicKey -> PrivateKey -> IO (OutContext, InContext)
-keyExchangeResp sock publicThem privateMe = do
-    (y,ay) <- getXaX
+-- @sock@ as the communications channel, the public keys @pubKeys@ to
+-- verify the end point and the private key @me@ to prove ourself.
+--
+-- If the initiator uses one of the assocated public keys for
+-- authentication, it will return the tuple of the public key used
+-- and the contexts created.  If the initiator does not use on of
+-- these keys then @Nothing@ is returned.
+keyExchangeResp :: Net.Socket
+                -> [PublicKey]
+                -> PrivateKey
+                -> IO (Maybe (PublicKey , OutContext, InContext))
+keyExchangeResp sock thems privateMe = do
     ax     <- (either error id . decode) `fmap` recvMsg sock
+    (y,ay) <- getXaX
     let axy = modexp ax y thePrime
         sharedSecret = encode . sha256 $ i2bs (2048 `div` 8) axy
         shared512    = expandSecret sharedSecret (16 + 16 + 4 + 4)
@@ -105,29 +134,38 @@ keyExchangeResp sock publicThem privateMe = do
                 op = fromIntegral . bs2i
                 bk = maybe (error "failed to build key") id . buildKey
             in (bk key1tmp, bk key2tmp, op salt1tmp, op salt2tmp)
-        mySig    = signExps ay ax privateMe
-        (enc, _) = ctr aesKey1 zeroIV mySig
-        outCtx = Out 2 salt1 aesKey1
-        inCtx  = InStrict 1 salt2 aesKey2
-    sendMsg sock (runPut (put ay >> put enc))
+        msg2     = buildSigMessage aesKey1 privateMe ay ax
+        outCtx   = Out 2 salt1 aesKey1
+        inCtx    = InStrict 1 salt2 aesKey2
+    sendMsg sock (runPut $ put ay >> put msg2)
     encSaAxAy <- recvMsg sock
-    let theirSig = fst $ unCtr aesKey2 zeroIV encSaAxAy
-    when (not $ verifyExps ax ay theirSig publicThem)
-           (error "RESP: Verification failed when exchanging key.  Man in the middle?")
-    return (outCtx, inCtx)
+    case parseSigMessage aesKey2 thems encSaAxAy ax ay of
+        Just t  -> return (Just (t, outCtx, inCtx))
+        Nothing -> return Nothing
 
--- |@keyExchangeInit sock them me@
+-- |@keyExchangeInit sock pubKeys me@
 --
 -- Act as the initiator in an authenticated key exchange using the socket
--- @sock@ as the communications channel, the public key @them@ to verify
--- the end point and the private key @me@ to prove ourself.
-keyExchangeInit :: Net.Socket -> PublicKey -> PrivateKey -> IO (OutContext, InContext)
-keyExchangeInit sock publicThem privateMe = do
+-- @sock@ as the communications channel, the public keys @pubKeys@ to
+-- verify the end point and the private key @me@ to prove ourself.
+--
+-- If the responder uses one of the assocated public keys for
+-- authentication, it will return the tuple of the public key used
+-- and the contexts created.  If the responder does not use ond of
+-- these keys then @Nothing@ is returned.
+--
+-- The current design assumes the responder accepts our signature -
+-- the responder can reject our signature silently.
+keyExchangeInit :: Net.Socket
+                -> [PublicKey]
+                -> PrivateKey
+                -> IO (Maybe (PublicKey, OutContext, InContext))
+keyExchangeInit sock thems privateMe = do
     -- our secret big number, x, and a^x for exchange.
     (x,ax) <- getXaX
     sendMsg sock (encode ax)
-    pkg <- recvMsg sock
-    let (ay, encSbAyAx) = either error id (decodePkg pkg)
+    msg2 <- recvMsg sock
+    let (ay, encSbAyAx) = either error id (decodePkg msg2)
         decodePkg = runGet (do i <- get -- Integer
                                e <- get -- Encrypted signature
                                return (i,e))
@@ -143,29 +181,33 @@ keyExchangeInit sock publicThem privateMe = do
                 op = fromIntegral . bs2i
                 bk = maybe (error "failed to build key") id . buildKey
             in (bk key1tmp, bk key2tmp, op salt1tmp, op salt2tmp)
-        mySig = signExps ax ay privateMe
-        (enc, _) = ctr aesKey2 zeroIV mySig
-        outCtx = Out 2 salt2 aesKey2
-        inCtx  = InStrict 1 salt1 aesKey1
-        theirSig = fst $ unCtr aesKey1 zeroIV encSbAyAx
-    when (not $ verifyExps ay ax theirSig publicThem)
-           (error "INIT: Verification failed when exchanging key.  Man in the middle?")
-    sendMsg sock enc
-    return (outCtx, inCtx)
+        msg3     = buildSigMessage aesKey2 privateMe ax ay
+        outCtx   = Out 2 salt2 aesKey2
+        inCtx    = InStrict 1 salt1 aesKey1
+    case parseSigMessage aesKey1 thems encSbAyAx ay ax of
+        Just t -> do
+            sendMsg sock msg3
+            return (Just (t,outCtx,inCtx))
+        Nothing -> do
+            sendMsg sock "FAIL"
+            return Nothing
 
 -- |Connect to the specified host and port, establishing a secure,
 -- authenticated connection with a party holding the public key.
-connect :: Net.HostName -> Net.PortNumber -> PublicKey -> PrivateKey -> IO Connection
-connect host port them us = do
+connect :: Net.HostName -> Net.PortNumber -> [PublicKey] -> PrivateKey -> IO (PublicKey,Connection)
+connect host port thems us = do
     sockaddr <- resolve host port
     socket   <- Net.socket Net.AF_INET Net.Stream Net.defaultProtocol
     Net.connect socket sockaddr
     Net.setSocketOption socket Net.NoDelay 1
     Net.setSocketOption socket Net.ReuseAddr 1
-    (oCtx, iCtx) <- keyExchangeInit socket them us
-    inCtx  <- newMVar iCtx
-    outCtx <- newMVar oCtx
-    return (Conn {..})
+    res <-  keyExchangeInit socket thems us
+    case res of
+        Nothing -> error "Failed to perform key agreement"
+        Just (t,oCtx,iCtx) -> do
+            inCtx  <- newMVar iCtx
+            outCtx <- newMVar oCtx
+            return (t,Conn {..})
   where
       resolve :: Net.HostName -> Net.PortNumber -> IO Net.SockAddr
       resolve h port = do
@@ -176,8 +218,8 @@ connect host port them us = do
 -- |Listen for and accept a connection on the host and port, establishing
 -- a secure, authenticated connection with a party holding the specified
 -- public key.
-accept :: Net.PortNumber -> PublicKey -> PrivateKey -> IO Connection
-accept port them us = do
+accept :: Net.PortNumber -> [PublicKey] -> PrivateKey -> IO (PublicKey,Connection)
+accept port thems us = do
     let sockaddr = Net.SockAddrInet port Net.iNADDR_ANY
     sock <- Net.socket Net.AF_INET Net.Stream Net.defaultProtocol
     Net.setSocketOption sock Net.ReuseAddr 1
@@ -186,10 +228,13 @@ accept port them us = do
     socket <- fst `fmap` Net.accept sock
     Net.setSocketOption socket Net.NoDelay 1
     Net.close sock
-    (oCtx, iCtx) <- keyExchangeResp socket them us
-    outCtx <- newMVar oCtx
-    inCtx  <- newMVar iCtx
-    return (Conn {..})
+    res <- keyExchangeResp socket thems us
+    case res of
+        Nothing -> error "Failed to perform key exchange"
+        Just (t, oCtx, iCtx) -> do
+            outCtx <- newMVar oCtx
+            inCtx  <- newMVar iCtx
+            return (t,Conn {..})
 
 recvMsg :: Net.Socket -> IO ByteString
 recvMsg s = do
@@ -224,3 +269,10 @@ modexp b e n = go 1 b e
           then go p (mod (x*x) n) (div e 2)
           else go (mod (p*x) n) x (pred e)
 
+instance Serialize PublicKey where
+    put (PublicKey {..}) = put public_size >> put public_n >> put public_e
+    get = do
+        public_size <- get
+        public_n <- get
+        public_e <- get
+        return (PublicKey {..})

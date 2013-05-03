@@ -34,13 +34,13 @@ main = do
     connecter privB pubA
 
 listener priv pub = do
-    conn <- accept port pub priv
+    conn <- snd `fmap` accept port [pub] priv
     recv conn >>= print
     send conn "Hello to you too!"
     return ()
 
 connecter priv pub = do
-    conn <- connect host port pub priv
+    conn <- snd `fmap` connect host port [pub] priv
     send conn "Hello!"
     recv conn >>= print
     return ()
