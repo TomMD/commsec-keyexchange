@@ -35,8 +35,8 @@ Now your programs will be able to read in these keys and perform key agreement:
 
         -- Step 3: Listen for and accept a connection (alternatively: connect to a listener).
         conn <- if listener
-                 then accept  host port them priv
-                 else connect host port them priv
+                 then accept  host port [them] priv
+                 else connect host port [them] priv
 
         -- Step 4: Communicate
         send conn "hello!"
