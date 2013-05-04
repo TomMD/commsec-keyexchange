@@ -21,6 +21,8 @@ extra-source-files:  Test/test.hs
 
 library
   exposed-modules:     Network.CommSec.KeyExchange
+                     , Network.CommSec.KeyExchange.Socket
+                     , Network.CommSec.KeyExchange.Internal
   -- other-modules:       
   build-depends:       base <5,
                        network,
