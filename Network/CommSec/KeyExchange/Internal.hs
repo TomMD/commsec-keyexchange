@@ -188,8 +188,6 @@ sendMsg s msg = do
     let pkt = B.append (runPut . putWord32be . fromIntegral . B.length $ msg) msg
     NetBS.sendAll s pkt
 
-keyLengthBytes = fmap ((`div` 8) . (+7)) keyLength
-
 sha256 :: ByteString -> SHA256
 sha256 bs = hash' bs
 

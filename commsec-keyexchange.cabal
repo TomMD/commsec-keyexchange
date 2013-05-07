@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                commsec-keyexchange
-version:             0.1.1
+version:             0.1.2
 synopsis:            Key agreement for commsec.
 description:         Use RSA keys to authenticate a key exchange to
                      establish a commsec 'Connection'.  This package comes with
@@ -28,9 +28,9 @@ library
                        network,
                        crypto-pubkey-types,
                        cipher-aes128,
-                       crypto-api >= 0.12,
+                       crypto-api >= 0.12.2,
                        bytestring,
-                       commsec >= 0.2.4,
+                       commsec >= 0.2.5,
                        RSA,
                        cryptohash-cryptoapi,
                        DRBG,
