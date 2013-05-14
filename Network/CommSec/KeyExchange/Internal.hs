@@ -57,7 +57,7 @@ encodeExps a b = fromStrict . runPut $ put a >> put b
 -- ^ x@
 getXaX :: IO (Integer, Integer)
 getXaX = do
-    g <- newGenIO :: IO HmacDRBG
+    g <- newGenIO :: IO CtrDRBG
     let (x,_) = throwLeft $ crandomR (1,thePrime-2) g
         ax    = modexp theGenerator x thePrime
     return (x,ax)

@@ -9,7 +9,7 @@ on each system.  Exchange public keys out of band, and connect using the `accept
 `connect` primitives from `Network.CommSec.KeyExchange`.
 
 ##Secure Communications using SSH Keys
-Once a pull request is accepted, using crypto-pubkey-openssh should be the easiest
+Using crypto-pubkey-openssh is the easiest
 method. From the shell, just generate RSA keys:
 
     $ ssh-keygen
