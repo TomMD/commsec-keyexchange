@@ -18,7 +18,7 @@ host = "127.0.0.1"
 readSSHKeys :: FilePath -> IO (PublicKey, PrivateKey)
 readSSHKeys fp = do
     OpenSshPublicKeyRsa pub _ <- (either error id . decodePublic) `fmap` B.readFile (fp <.> "pub")
-    OpenSshPrivateKeyRsa priv <- (either error id . (\x -> decodePrivate x Nothing)) `fmap` B.readFile fp
+    OpenSshPrivateKeyRsa priv <- (either error id . (\x -> decodePrivate x)) `fmap` B.readFile fp
     return (pub,priv)
 
 main = do

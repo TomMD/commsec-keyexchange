@@ -41,11 +41,11 @@ thePrime = 0x87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00
 theGenerator :: Integer
 theGenerator = 5
 
--- |Sign exponents:  Sign(q_y, Sha256(a | b))
+-- |Sign exponents:  Sign(q_y, a | b)
 signExps :: Integer -> Integer -> PrivateKey -> ByteString
 signExps a b k = L.toStrict . RSA.sign k $ encodeExps a b
 
--- |Verify exponents and other party was signed as:  Sign(q_y, Sha256(a | b))
+-- |Verify exponents and other party was signed as:  Sign(q_y, a | b)
 verifyExps :: Integer -> Integer -> ByteString -> PublicKey -> Bool
 verifyExps a b sig k = RSA.verify k (encodeExps a b) (fromStrict sig)
 
@@ -53,8 +53,8 @@ verifyExps a b sig k = RSA.verify k (encodeExps a b) (fromStrict sig)
 encodeExps :: Integer -> Integer -> L.ByteString
 encodeExps a b = fromStrict . runPut $ put a >> put b
 
--- |Get the secret value @x@ and a publicly sharable value @theGenerator
--- ^ x@
+-- |Get the secret value @x@ and a publicly sharable value
+-- @theGenerator ^ x@
 getXaX :: IO (Integer, Integer)
 getXaX = do
     g <- newGenIO :: IO CtrDRBG
@@ -67,7 +67,7 @@ buildSigMessage aesKey privateMe ax ay =
     let publicMe = encode . sha256 . encode . private_pub $ privateMe
         mySig    = signExps ax ay privateMe
         plaintext = B.append publicMe mySig
-    in fst .  ctr aesKey zeroIV $ plaintext
+    in fst . ctr aesKey zeroIV $ plaintext
 
 parseSigMessage :: AESKey -> [PublicKey] -> ByteString -> Integer -> Integer -> Maybe PublicKey
 parseSigMessage aesKey thems enc ax ay =
@@ -90,7 +90,7 @@ parseSigMessage aesKey thems enc ax ay =
 --
 -- If the initiator uses one of the assocated public keys for
 -- authentication, it will return the tuple of the public key used
--- and the contexts created.  If the initiator does not use on of
+-- and the contexts created.  If the initiator does not use one of
 -- these keys then @Nothing@ is returned.
 keyExchangeResp :: Net.Socket
                 -> [PublicKey]
@@ -128,11 +128,12 @@ keyExchangeResp sock thems privateMe = do
 --
 -- If the responder uses one of the assocated public keys for
 -- authentication, it will return the tuple of the public key used
--- and the contexts created.  If the responder does not use ond of
+-- and the contexts created.  If the responder does not use one of
 -- these keys then @Nothing@ is returned.
 --
 -- The current design assumes the responder accepts our signature -
--- the responder can reject our signature silently.
+-- the responder could reject our signature silently and this funcition
+-- would complete successfully.
 keyExchangeInit :: Net.Socket
                 -> [PublicKey]
                 -> PrivateKey
