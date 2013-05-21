@@ -35,8 +35,10 @@ import Crypto.Classes
 import Crypto.Util
 import Crypto.Modes (zeroIV)
 import Crypto.Hash.CryptoAPI
+import Control.Exception (bracket)
 import Control.Monad
 import Control.Monad.CryptoRandom
+import Data.Maybe (isNothing, fromMaybe)
 import qualified Codec.Crypto.RSA as RSA
 import qualified Data.ByteString as B
 import Data.ByteString (ByteString)
@@ -66,31 +68,45 @@ connect :: Net.HostName
         -> PrivateKey
         -> IO (PublicKey,Connection)
 connect host port thems us = do
-    sockaddr <- resolve host port
-    socket   <- Net.socket Net.AF_INET Net.Stream Net.defaultProtocol
-    maybe (error "Could not agree on a key.") id
-          `fmap` (S.connect socket sockaddr thems us)
-  where
-      resolve :: Net.HostName -> Net.PortNumber -> IO Net.SockAddr
-      resolve h port = do
-        ai <- Net.getAddrInfo (Just $ Net.defaultHints {
-                                    Net.addrFamily = Net.AF_INET, Net.addrSocketType = Net.Stream } ) (Just h) (Just (show port))
-        return (maybe (error $ "Could not resolve host " ++ h) Net.addrAddress (listToMaybe ai))
+    ai       <- resolve1 (Just host) port
+    socket   <- openSocket ai
+    res      <- S.connect socket (Net.addrAddress ai) thems us
+    case res of
+      Nothing -> fail "Could not agree on a key."
+      Just x  -> return x
+
+-- | Return the first 'AddrInfo' suitable for establishing a
+-- stream connection to the given host on the given port.
+resolve1 :: Maybe Net.HostName -> Net.PortNumber -> IO Net.AddrInfo
+resolve1 h port = do
+  let passiveFlag
+         | isNothing h = [Net.AI_PASSIVE]
+         | otherwise = []
+      flags = Net.defaultHints
+                { Net.addrSocketType = Net.Stream
+                , Net.addrFamily     = Net.AF_INET -- XXX unnecessarily restrictive
+                , Net.addrFlags      = passiveFlag ++ [Net.AI_ADDRCONFIG]
+                }
+  ais <- Net.getAddrInfo (Just flags) h (Just (show port))
+  case ais of
+    []   -> fail ("Could not resolve host " ++ fromMaybe "" h)
+    ai:_ -> return ai
+
+-- | Open a new socket given the parameters in an 'AddrInfo'
+openSocket :: Net.AddrInfo -> IO Net.Socket
+openSocket Net.AddrInfo{..} = Net.socket addrFamily addrSocketType addrProtocol
 
 -- |Listen for and accept a connection on the host and port, establishing
 -- a secure, authenticated connection with a party holding the specified
 -- public key.
 accept :: Net.PortNumber -> [PublicKey] -> PrivateKey -> IO (PublicKey,Connection)
 accept port thems us = do
-    let sockaddr = Net.SockAddrInet port Net.iNADDR_ANY
-    sock <- Net.socket Net.AF_INET Net.Stream Net.defaultProtocol
-    Net.setSocketOption sock Net.ReuseAddr 1
-    Net.bind sock sockaddr
-    Net.listen sock 1
-    -- socket <- fst `fmap` Net.accept sock
-    mconn  <- S.accept sock thems us
-    case mconn of
-        Nothing -> error "Failed to perform key exchange"
-        Just (t,c) -> do
-            Net.close sock
-            return (t,c)
+    ai <- resolve1 Nothing port
+    bracket (openSocket ai) Net.close $ \sock -> do
+      Net.setSocketOption sock Net.ReuseAddr 1
+      Net.bind sock (Net.addrAddress ai)
+      Net.listen sock 1
+      mconn <- S.accept sock thems us
+      case mconn of
+          Nothing -> fail "Failed to perform key exchange"
+          Just res -> return res
