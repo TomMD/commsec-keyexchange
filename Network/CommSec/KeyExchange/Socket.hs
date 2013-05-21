@@ -9,12 +9,14 @@ module Network.CommSec.KeyExchange.Socket
     , CS.close
     ) where
 
-import Network.CommSec
-import qualified Network.Socket as Net
 import Control.Concurrent.MVar
 import Crypto.Types.PubKey.RSA
+import Data.Traversable (traverse)
+import Network.CommSec
 import Network.CommSec.KeyExchange.Internal as I
 import qualified Network.CommSec as CS
+import qualified Network.CommSec.Package as CSP
+import qualified Network.Socket as Net
 
 connect :: Net.Socket
         -> Net.SockAddr
@@ -25,12 +27,7 @@ connect socket addr pubKeys privateMe = do
     Net.connect socket addr
     Net.setSocketOption socket Net.NoDelay 1
     res <- I.keyExchangeInit socket pubKeys privateMe
-    case res of
-      Nothing -> return Nothing
-      Just (t,oCtx,iCtx) -> do
-          inCtx  <- newMVar iCtx
-          outCtx <- newMVar oCtx
-          return (Just (t,Conn{..}))
+    traverse (wrapContexts socket) res
 
 accept  :: Net.Socket
         -> [PublicKey]
@@ -40,9 +37,11 @@ accept sock pubKeys privateMe = do
     (socket,_) <- Net.accept sock
     Net.setSocketOption socket Net.NoDelay 1
     res <- keyExchangeResp socket pubKeys privateMe
-    case res of
-      Nothing -> return Nothing
-      Just (t, oCtx, iCtx) -> do
-          outCtx <- newMVar oCtx
-          inCtx  <- newMVar iCtx
-          return (Just (t, Conn {..}))
+    traverse (wrapContexts socket) res
+
+-- Helper function for wrapping up the results of a key exchange into a 'Connection'
+wrapContexts :: Net.Socket -> (PublicKey, CSP.OutContext, CSP.InContext) -> IO (PublicKey, Connection)
+wrapContexts socket (t, oCtx, iCtx) = do
+  outCtx <- newMVar oCtx
+  inCtx  <- newMVar iCtx
+  return (t, Conn {..})
