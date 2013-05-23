@@ -30,7 +30,7 @@ library
                        cipher-aes128,
                        crypto-api >= 0.12.2,
                        bytestring,
-                       commsec >= 0.2.5,
+                       commsec >= 0.3,
                        RSA,
                        cryptohash-cryptoapi,
                        DRBG >= 0.5,
