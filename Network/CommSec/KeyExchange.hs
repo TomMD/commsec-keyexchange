@@ -68,23 +68,25 @@ connect :: Net.HostName
         -> PrivateKey
         -> IO (PublicKey,Connection)
 connect host port thems us = do
-    ai       <- resolve1 (Just host) port
+    ai       <- resolve1 Active (Just host) port
     socket   <- openSocket ai
     res      <- S.connect socket (Net.addrAddress ai) thems us
     case res of
       Nothing -> fail "Could not agree on a key."
       Just x  -> return x
 
+data IsPassive = Passive | Active
+
 -- | Return the first 'AddrInfo' suitable for establishing a
 -- stream connection to the given host on the given port.
-resolve1 :: Maybe Net.HostName -> Net.PortNumber -> IO Net.AddrInfo
-resolve1 h port = do
-  let passiveFlag
-         | isNothing h = [Net.AI_PASSIVE]
-         | otherwise = []
+resolve1 :: IsPassive -> Maybe Net.HostName -> Net.PortNumber -> IO Net.AddrInfo
+resolve1 psv h port = do
+  let passiveFlag =
+         case psv of
+           Passive -> [Net.AI_PASSIVE]
+           Active  -> []
       flags = Net.defaultHints
                 { Net.addrSocketType = Net.Stream
-                , Net.addrFamily     = Net.AF_INET -- XXX unnecessarily restrictive
                 , Net.addrFlags      = passiveFlag ++ [Net.AI_ADDRCONFIG]
                 }
   ais <- Net.getAddrInfo (Just flags) h (Just (show port))
@@ -99,9 +101,9 @@ openSocket Net.AddrInfo{..} = Net.socket addrFamily addrSocketType addrProtocol
 -- |Listen for and accept a connection on the host and port, establishing
 -- a secure, authenticated connection with a party holding the specified
 -- public key.
-accept :: Net.PortNumber -> [PublicKey] -> PrivateKey -> IO (PublicKey,Connection)
-accept port thems us = do
-    ai <- resolve1 Nothing port
+accept :: Net.PortNumber -> [PublicKey] -> PrivateKey -> Maybe Net.HostName -> IO (PublicKey,Connection)
+accept port thems us addr = do
+    ai <- resolve1 Passive addr port
     bracket (openSocket ai) Net.close $ \sock -> do
       Net.setSocketOption sock Net.ReuseAddr 1
       Net.bind sock (Net.addrAddress ai)
