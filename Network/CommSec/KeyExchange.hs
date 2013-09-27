@@ -23,7 +23,7 @@
 module Network.CommSec.KeyExchange
     ( connect
     , accept
-    , CS.send, CS.recv, CS.Connection, CS.close
+    , CS.send, CS.recv, CS.Connection(..), CS.close
     , Net.HostName, Net.PortNumber
     ) where
 

@@ -2,7 +2,7 @@
 module Network.CommSec.KeyExchange.Socket
     ( Network.CommSec.KeyExchange.Socket.connect
     , Network.CommSec.KeyExchange.Socket.accept
-    , Net.listen, Net.socket
+    , Net.listen, Net.bind, Net.socket
     , CS.send
     , CS.recv
     , CS.Connection
