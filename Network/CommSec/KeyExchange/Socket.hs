@@ -27,21 +27,21 @@ connect socket addr pubKeys privateMe = do
     Net.connect socket addr
     Net.setSocketOption socket Net.NoDelay 1
     res <- I.keyExchangeInit socket pubKeys privateMe
-    traverse (wrapContexts socket) res
+    traverse (wrapContexts socket addr) res
 
 accept  :: Net.Socket
         -> [PublicKey]
         -> PrivateKey
         -> IO (Maybe (PublicKey, Connection))
 accept sock pubKeys privateMe = do
-    (socket,_) <- Net.accept sock
+    (socket,sa) <- Net.accept sock
     Net.setSocketOption socket Net.NoDelay 1
     res <- keyExchangeResp socket pubKeys privateMe
-    traverse (wrapContexts socket) res
+    traverse (wrapContexts socket sa) res
 
 -- Helper function for wrapping up the results of a key exchange into a 'Connection'
-wrapContexts :: Net.Socket -> (PublicKey, CSP.OutContext, CSP.InContext) -> IO (PublicKey, Connection)
-wrapContexts socket (t, oCtx, iCtx) = do
+wrapContexts :: Net.Socket -> Net.SockAddr -> (PublicKey, CSP.OutContext, CSP.InContext) -> IO (PublicKey, Connection)
+wrapContexts socket socketAddr (t, oCtx, iCtx) = do
   outCtx <- newMVar oCtx
   inCtx  <- newMVar iCtx
   return (t, Conn {..})
