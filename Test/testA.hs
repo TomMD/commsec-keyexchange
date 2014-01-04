@@ -33,7 +33,7 @@ main = do
     listener privA pubB
 
 listener priv pub = do
-    conn <- snd `fmap` accept port [pub] priv
+    conn <- snd `fmap` accept port [pub] priv Nothing
     forkIO (gor conn)
     go conn
   where

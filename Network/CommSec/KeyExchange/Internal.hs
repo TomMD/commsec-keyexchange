@@ -112,10 +112,12 @@ keyExchangeResp sock thems privateMe = do
                 bk = maybe (error "failed to build key") id . buildKey
             in (bk key1tmp, bk key2tmp, op salt1tmp, op salt2tmp)
         msg2     = buildSigMessage aesKey1 privateMe ay ax
-        outCtx   = Out (B.length msg2 `div` (blockSizeBytes `for` aesKey1))  salt1 aesKey1
-        inCtx    = InStrict (B.length encSaAxAy `div` (blockSizeBytes `for` aesKey2)) salt2 aesKey2
+        outCtr   = fromIntegral $ B.length msg2 `div` (blockSizeBytes `for` aesKey1)
+        outCtx   = Out outCtr  salt1 aesKey1
     sendMsg sock (runPut $ put ay >> put msg2)
     encSaAxAy <- recvMsg sock
+    let inCtr    = fromIntegral $ B.length encSaAxAy `div` (blockSizeBytes `for` aesKey2)
+        inCtx    = InStrict inCtr salt2 aesKey2
     case parseSigMessage aesKey2 thems encSaAxAy ax ay of
         Just t  -> return (Just (t, outCtx, inCtx))
         Nothing -> return Nothing
@@ -160,8 +162,10 @@ keyExchangeInit sock thems privateMe = do
                 bk = maybe (error "failed to build key") id . buildKey
             in (bk key1tmp, bk key2tmp, op salt1tmp, op salt2tmp)
         msg3     = buildSigMessage aesKey2 privateMe ax ay
-        outCtx   = Out (B.length msg3 `div` (blockSizeBytes `for` aesKey2)) salt2 aesKey2
-        inCtx    = InStrict (B.length encSbAyAx `div` (blockSizeBytes `for` aesKey2)) salt1 aesKey1
+        outCtr   = fromIntegral $ B.length msg3 `div` (blockSizeBytes `for` aesKey2)
+        outCtx   = Out outCtr salt2 aesKey2
+        inCtr    = fromIntegral $ B.length encSbAyAx `div` (blockSizeBytes `for` aesKey1)
+        inCtx    = InStrict inCtr salt1 aesKey1
     case parseSigMessage aesKey1 thems encSbAyAx ay ax of
         Just t -> do
             sendMsg sock msg3
