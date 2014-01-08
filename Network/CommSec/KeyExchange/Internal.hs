@@ -12,7 +12,6 @@ import Crypto.Types.PubKey.RSA
 import Crypto.Cipher.AES128
 import Crypto.Classes
 import Crypto.Util
-import Crypto.Modes (zeroIV)
 import Crypto.Hash.CryptoAPI
 import Control.Monad
 import Control.Monad.CryptoRandom
@@ -31,7 +30,7 @@ import Foreign.Storable
 
 -- For types
 import Network.CommSec hiding (accept, connect)
-import Network.CommSec.Package (InContext(..), OutContext(..))
+import Network.CommSec.Package (inContext, outContext, InContext, OutContext)
 
 -- |This prime is from RFC 5114 section 2.3
 thePrime :: Integer
@@ -62,14 +61,14 @@ getXaX = do
         ax    = modexp theGenerator x thePrime
     return (x,ax)
 
-buildSigMessage :: AESKey -> PrivateKey -> Integer -> Integer -> ByteString
+buildSigMessage :: AESKey128 -> PrivateKey -> Integer -> Integer -> ByteString
 buildSigMessage aesKey privateMe ax ay =
     let publicMe = encode . sha256 . encode . private_pub $ privateMe
         mySig    = signExps ax ay privateMe
         plaintext = B.append publicMe mySig
     in fst . ctr aesKey zeroIV $ plaintext
 
-parseSigMessage :: AESKey -> [PublicKey] -> ByteString -> Integer -> Integer -> Maybe PublicKey
+parseSigMessage :: AESKey128 -> [PublicKey] -> ByteString -> Integer -> Integer -> Maybe PublicKey
 parseSigMessage aesKey thems enc ax ay =
     let (pubHash, theirSig) = B.splitAt (256 `div` 8)
                             . fst . unCtr aesKey zeroIV
@@ -113,11 +112,11 @@ keyExchangeResp sock thems privateMe = do
             in (bk key1tmp, bk key2tmp, op salt1tmp, op salt2tmp)
         msg2     = buildSigMessage aesKey1 privateMe ay ax
         outCtr   = fromIntegral $ B.length msg2 `div` (blockSizeBytes `for` aesKey1)
-        outCtx   = Out outCtr  salt1 aesKey1
+        outCtx   = outContext outCtr salt1 aesKey1
     sendMsg sock (runPut $ put ay >> put msg2)
     encSaAxAy <- recvMsg sock
     let inCtr    = fromIntegral $ B.length encSaAxAy `div` (blockSizeBytes `for` aesKey2)
-        inCtx    = InStrict inCtr salt2 aesKey2
+        inCtx    = inContext inCtr salt2 aesKey2
     case parseSigMessage aesKey2 thems encSaAxAy ax ay of
         Just t  -> return (Just (t, outCtx, inCtx))
         Nothing -> return Nothing
@@ -163,9 +162,9 @@ keyExchangeInit sock thems privateMe = do
             in (bk key1tmp, bk key2tmp, op salt1tmp, op salt2tmp)
         msg3     = buildSigMessage aesKey2 privateMe ax ay
         outCtr   = fromIntegral $ B.length msg3 `div` (blockSizeBytes `for` aesKey2)
-        outCtx   = Out outCtr salt2 aesKey2
+        outCtx   = outContext outCtr salt2 aesKey2
         inCtr    = fromIntegral $ B.length encSbAyAx `div` (blockSizeBytes `for` aesKey1)
-        inCtx    = InStrict inCtr salt1 aesKey1
+        inCtx    = inContext inCtr salt1 aesKey1
     case parseSigMessage aesKey1 thems encSbAyAx ay ax of
         Just t -> do
             sendMsg sock msg3

@@ -33,7 +33,6 @@ import Crypto.Types.PubKey.RSA
 import Crypto.Cipher.AES128
 import Crypto.Classes
 import Crypto.Util
-import Crypto.Modes (zeroIV)
 import Crypto.Hash.CryptoAPI
 import Control.Exception (bracket)
 import Control.Monad
