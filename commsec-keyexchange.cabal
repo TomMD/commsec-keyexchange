@@ -25,7 +25,6 @@ library
                      , Network.CommSec.KeyExchange.Internal
   -- other-modules:       
   build-depends:       base <5,
-                       network,
                        crypto-pubkey-types,
                        cipher-aes128,
                        crypto-api >= 0.12.2,
@@ -36,3 +35,7 @@ library
                        DRBG >= 0.5,
                        monadcryptorandom,
                        cereal
+  if os(halvm)
+     build-depends:    network-hans
+  else
+     build-depends:    network
